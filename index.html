@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blom-AI | Tilde NA23A</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <style>
+        :root {
+            --primary: #ff7675;
+            --secondary: #74b9ff;
+            --accent: #55efc4;
+            --white: rgba(255, 255, 255, 0.9);
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            /* Animerad blommig bakgrund */
+            background: linear-gradient(-45deg, #ff9a9e, #fad0c4, #a1c4fd, #c2e9fb);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .main-card {
+            background: var(--white);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 30px;
+            padding: 40px;
+            width: 100%;
+            max-width: 480px;
+            text-align: center;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .main-card:hover {
+            transform: translateY(-5px);
+        }
+
+        h1 {
+            color: #2d3436;
+            font-size: 2.2rem;
+            margin-bottom: 5px;
+            background: linear-gradient(to right, #ff7675, #6c5ce7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .student-badge {
+            display: inline-block;
+            background: #6c5ce7;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 10px rgba(108, 92, 231, 0.3);
+        }
+
+        /* Statusindikator */
+        #status-box {
+            padding: 12px;
+            border-radius: 15px;
+            margin-bottom: 25px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .loading { background: #ffeaa7; color: #d35400; }
+        .ready { background: #55efc4; color: #00b894; animation: pulse 2s infinite; }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+
+        /* Uppladdning */
+        .drop-zone {
+            border: 3px dashed #fab1a0;
+            border-radius: 20px;
+            padding: 40px 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            background: rgba(255, 118, 117, 0.05);
+        }
+
+        .drop-zone:hover {
+            border-color: #ff7675;
+            background: rgba(255, 118, 117, 0.1);
+        }
+
+        #preview-img {
+            width: 100%;
+            max-height: 250px;
+            object-fit: cover;
+            border-radius: 15px;
+            display: none;
+            margin-top: 15px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+
+        /* Resultat sektion */
+        #result-display {
+            margin-top: 30px;
+            display: none;
+            padding: 20px;
+            border-radius: 20px;
+            background: white;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        .flower-title {
+            font-size: 1.8rem;
+            font-weight: 800;
+            color: #ff7675;
+            text-transform: capitalize;
+            margin: 10px 0;
+        }
+
+        .confidence-container {
+            width: 100%;
+            height: 12px;
+            background: #eee;
+            border-radius: 10px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+
+        .confidence-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #55efc4, #00b894);
+            width: 0%;
+            transition: width 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+    </style>
+</head>
+<body>
+
+<div class="main-card">
+    <h1>Blomsterkollen 🌸</h1>
+    <div class="student-badge">Tilde | NA23A</div>
+
+    <div id="status-box" class="loading">
+        <span>●</span> Väntar på modell...
+    </div>
+
+    <div class="drop-zone" onclick="document.getElementById('input-file').click()">
+        <p id="upload-text">📸 Klicka här för att välja en blomma</p>
+        <input type="file" id="input-file" hidden accept="image/*">
+        <img id="preview-img" src="">
+    </div>
+
+    <div id="result-display">
+        <p style="margin:0; font-size: 0.9rem; color: #636e72;">AI:n tror att detta är en:</p>
+        <div id="flower-name" class="flower-title">-</div>
+        <div style="font-size: 1.1rem; font-weight: bold;">
+            Sannolikhet: <span id="percent" style="color: #00b894;">0%</span>
+        </div>
+        <div class="confidence-container">
+            <div id="bar-fill" class="confidence-bar"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let model;
+    // Dina arter i alfabetisk ordning (standard för de flesta mappar)
+    const CLASSES = ['Daisy', 'Dandelion', 'Roses', 'Sunflowers', 'Tulips'];
+
+    async function loadFlowerModel() {
+        const status = document.getElementById('status-box');
+        try {
+            model = await tf.loadLayersModel('tfjs_model/model.json');
+            status.innerHTML = "<span>●</span> Modellen är redo!";
+            status.className = "ready";
+        } catch (e) {
+            status.innerHTML = "<span>●</span> Kunde inte hitta modellen";
+            console.error(e);
+        }
+    }
+
+    document.getElementById('input-file').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const preview = document.getElementById('preview-img');
+        const uploadText = document.getElementById('upload-text');
+        
+        preview.src = URL.createObjectURL(file);
+        preview.style.display = 'block';
+        uploadText.style.display = 'none';
+
+        preview.onload = async () => {
+            if (!model) return;
+
+            // Bearbetning
+            const tensor = tf.browser.fromPixels(preview)
+                .resizeNearestNeighbor([224, 224])
+                .toFloat()
+                .div(tf.scalar(255))
+                .expandDims();
+
+            const prediction = await model.predict(tensor).data();
+            const topIndex = tf.argMax(prediction).dataSync()[0];
+            const probability = prediction[topIndex];
+
+            // UI Uppdatering
+            document.getElementById('result-display').style.display = 'block';
+            document.getElementById('flower-name').innerText = CLASSES[topIndex];
+            document.getElementById('percent').innerText = (probability * 100).toFixed(1) + "%";
+            document.getElementById('bar-fill').style.width = (probability * 100) + "%";
+        };
+    });
+
+    loadFlowerModel();
+</script>
+
+</body>
+</html>
